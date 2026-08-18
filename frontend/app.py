@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import pandas as pd
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 # ==========================================================
@@ -15,8 +17,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-API_URL = "http://127.0.0.1:8000/predecir"
-
 
 # ==========================================================
 # RUTAS
@@ -24,9 +24,15 @@ API_URL = "http://127.0.0.1:8000/predecir"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ASSETS_DIR = BASE_DIR / "assets"
+MODELO_DIR = BASE_DIR / "modelo"
 
 ENCABEZADO_IMG = ASSETS_DIR / "encabezado.png"
 PIE_IMG = ASSETS_DIR / "pie_pagina.png"
+
+MAPA_HTML = MODELO_DIR / "mapa_clusters.html"
+MAPA_CSV = MODELO_DIR / "mapa_clusters.csv"
+
+API_URL = "http://127.0.0.1:8000/predecir"
 
 SEMAFOROS = {
     "VERDE": ASSETS_DIR / "semaforo_verde.png",
@@ -36,12 +42,7 @@ SEMAFOROS = {
 
 
 # ==========================================================
-# CATÁLOGOS PROVISIONALES
-# ==========================================================
-# IMPORTANTE:
-# Los subtipos y variables definitivos deberán sustituirse
-# por los validados por Ciencia de Datos / Fanny.
-# Esta estructura permite hacerlo sin rediseñar la interfaz.
+# CATÁLOGOS DE CONTEXTO
 # ==========================================================
 
 SUBTIPOS_POR_TIPO = {
@@ -66,59 +67,94 @@ SUBTIPOS_POR_TIPO = {
 }
 
 
-# Por ahora mantenemos las variables que nuestra API provisional acepta.
-# Después esta matriz se reemplaza por el contrato real del modelo.
+DESCRIPCION_TIPO = {
+    "LÓTICO":
+        "Ríos, arroyos y corrientes con movimiento continuo.",
 
-INDICADORES_POR_TIPO = {
-    "LÓTICO": [
-        "dbo",
-        "dqo",
-        "sst",
-        "coli_fec",
-        "e_coli",
-        "od",
-    ],
-    "LÉNTICO": [
-        "dbo",
-        "dqo",
-        "sst",
-        "coli_fec",
-        "e_coli",
-        "od",
-    ],
-    "COSTERO": [
-        "coli_fec",
-    ],
+    "LÉNTICO":
+        "Lagos, lagunas, presas y cuerpos de agua con flujo reducido.",
+
+    "COSTERO":
+        "Bahías, esteros, estuarios y zonas asociadas al entorno marino.",
 }
 
 
+# ==========================================================
+# VARIABLES REALES DEL MODELO
+# ==========================================================
+
+INDICADORES_MODELO = [
+    "sst",
+    "coli_fec",
+    "e_coli",
+    "dqo",
+    "dbo",
+    "tox_v_15",
+    "tox_d_48",
+    "od_porc",
+]
+
+
 ETIQUETAS_INDICADORES = {
-    "dbo": "DBO (mg/L)",
-    "dqo": "DQO (mg/L)",
     "sst": "SST (mg/L)",
     "coli_fec": "Coliformes fecales (NMP/100 mL)",
     "e_coli": "E. coli (NMP/100 mL)",
-    "od": "Oxígeno disuelto (%)",
+    "dqo": "DQO (mg/L)",
+    "dbo": "DBO (mg/L)",
+    "tox_v_15": "Toxicidad Vibrio fischeri 15 min (UT)",
+    "tox_d_48": "Toxicidad Daphnia 48 h (UT)",
+    "od_porc": "Oxígeno disuelto (%)",
+}
+
+
+DESCRIPCION_INDICADORES = {
+    "sst":
+        "Cantidad de sólidos suspendidos presentes en el agua.",
+
+    "coli_fec":
+        "Indicador microbiológico asociado con contaminación fecal.",
+
+    "e_coli":
+        "Bacteria utilizada como indicador específico de contaminación fecal.",
+
+    "dqo":
+        "Cantidad de oxígeno necesaria para oxidar químicamente la materia presente.",
+
+    "dbo":
+        "Oxígeno requerido por microorganismos para degradar materia orgánica.",
+
+    "tox_v_15":
+        "Respuesta de toxicidad medida con Vibrio fischeri a 15 minutos.",
+
+    "tox_d_48":
+        "Respuesta de toxicidad medida con Daphnia a 48 horas.",
+
+    "od_porc":
+        "Porcentaje de oxígeno disuelto disponible en el agua.",
 }
 
 
 VALORES_INICIALES = {
-    "dbo": 2.5,
-    "dqo": 18.0,
     "sst": 12.0,
     "coli_fec": 100.0,
     "e_coli": 20.0,
-    "od": 6.0,
+    "dqo": 18.0,
+    "dbo": 2.5,
+    "tox_v_15": 1.0,
+    "tox_d_48": 1.0,
+    "od_porc": 72.0,
 }
 
 
 PASOS = {
-    "dbo": 0.1,
-    "dqo": 0.1,
     "sst": 0.1,
     "coli_fec": 1.0,
     "e_coli": 1.0,
-    "od": 0.1,
+    "dqo": 0.1,
+    "dbo": 0.1,
+    "tox_v_15": 0.1,
+    "tox_d_48": 0.1,
+    "od_porc": 0.1,
 }
 
 
@@ -129,10 +165,6 @@ PASOS = {
 st.markdown(
     """
     <style>
-
-    /* -----------------------------------------------------
-       PÁGINA
-    ----------------------------------------------------- */
 
     .stApp {
         background-color: #F6FAFC !important;
@@ -163,22 +195,6 @@ st.markdown(
         padding-right: 1.6rem !important;
     }
 
-
-    /* -----------------------------------------------------
-       NAVEGACIÓN
-    ----------------------------------------------------- */
-
-    .nav-title {
-        color: #0D2B45;
-        font-weight: 800;
-        font-size: 16px;
-    }
-
-    .nav-subtitle {
-        color: #607784;
-        font-size: 12px;
-    }
-
     div[data-testid="stButton"] > button {
         border-radius: 12px;
         min-height: 62px;
@@ -206,11 +222,6 @@ st.markdown(
         color: white;
         border: none;
     }
-
-
-    /* -----------------------------------------------------
-       BLOQUES
-    ----------------------------------------------------- */
 
     .page-heading {
         margin-top: 16px;
@@ -260,11 +271,6 @@ st.markdown(
         text-align: center;
         margin-top: 12px;
     }
-
-
-    /* -----------------------------------------------------
-       RESULTADO
-    ----------------------------------------------------- */
 
     .result-card {
         background: #FFFFFF;
@@ -328,6 +334,26 @@ st.markdown(
         line-height: 1.5;
     }
 
+    .metric-card {
+        background: white;
+        border: 1px solid #DDE8ED;
+        border-radius: 14px;
+        padding: 16px;
+        text-align: center;
+    }
+
+    .metric-number {
+        color: #0D5C8B;
+        font-size: 28px;
+        font-weight: 850;
+    }
+
+    .metric-label {
+        color: #607784;
+        font-size: 12px;
+        margin-top: 4px;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -335,7 +361,30 @@ st.markdown(
 
 
 # ==========================================================
-# CABECERA MAESTRA
+# DATOS
+# ==========================================================
+
+@st.cache_data
+def cargar_mapa_clusters():
+    if MAPA_CSV.exists():
+        return pd.read_csv(MAPA_CSV)
+
+    return pd.DataFrame()
+
+
+df_mapa = cargar_mapa_clusters()
+
+
+# ==========================================================
+# ESTADO DE NAVEGACIÓN
+# ==========================================================
+
+if "pagina" not in st.session_state:
+    st.session_state["pagina"] = "EXPLORAR"
+
+
+# ==========================================================
+# CABECERA
 # ==========================================================
 
 if ENCABEZADO_IMG.exists():
@@ -358,352 +407,676 @@ nav1, nav2, nav3 = st.columns(3)
 with nav1:
     if st.button(
         "🔎 EXPLORAR\n\n¿Cómo está el agua?",
+        type="primary"
+        if st.session_state["pagina"] == "EXPLORAR"
+        else "secondary",
         use_container_width=True,
     ):
-        st.info(
-            "La sección Explorar se incorporará en la siguiente etapa."
-        )
+        st.session_state["pagina"] = "EXPLORAR"
+        st.rerun()
 
 with nav2:
     if st.button(
         "📖 COMPRENDER\n\n¿Qué significa la información?",
+        type="primary"
+        if st.session_state["pagina"] == "COMPRENDER"
+        else "secondary",
         use_container_width=True,
     ):
-        st.info(
-            "La sección Comprender se incorporará en la siguiente etapa."
-        )
+        st.session_state["pagina"] = "COMPRENDER"
+        st.rerun()
 
 with nav3:
-    st.button(
+    if st.button(
         "💧 EVALUAR\n\nConsulta una condición del agua",
-        type="primary",
+        type="primary"
+        if st.session_state["pagina"] == "EVALUAR"
+        else "secondary",
         use_container_width=True,
-        disabled=True,
-    )
+    ):
+        st.session_state["pagina"] = "EVALUAR"
+        st.rerun()
 
 
 # ==========================================================
-# TÍTULO DE PÁGINA
+# PÁGINA 1 — EXPLORAR
 # ==========================================================
 
-st.markdown(
-    """
-    <div class="page-heading">
-        Evaluar la calidad del agua
-    </div>
-
-    <div class="page-intro">
-        Selecciona el tipo de cuerpo de agua y registra los
-        indicadores disponibles para realizar la consulta.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ==========================================================
-# DOS COLUMNAS PRINCIPALES
-# ==========================================================
-
-col_formulario, col_resultado = st.columns(
-    [1.08, 0.92],
-    gap="large",
-)
-
-
-# ==========================================================
-# COLUMNA IZQUIERDA — FORMULARIO
-# ==========================================================
-
-with col_formulario:
+if st.session_state["pagina"] == "EXPLORAR":
 
     st.markdown(
-        '<div class="section-heading">1. Tipo de cuerpo de agua</div>',
+        """
+        <div class="page-heading">
+            Explorar las aguas superficiales de México
+        </div>
+
+        <div class="page-intro">
+            Conoce la distribución geográfica de los sitios analizados,
+            su clasificación observada y los patrones identificados
+            mediante agrupamiento.
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    tipo = st.selectbox(
-        "Selecciona el tipo",
-        [
-            "Selecciona...",
-            "LÓTICO",
-            "LÉNTICO",
-            "COSTERO",
-        ],
-    )
+    if df_mapa.empty:
 
-    subtipo = None
-
-    if tipo != "Selecciona...":
-
-        subtipo = st.selectbox(
-            "Selecciona el subtipo",
-            ["Selecciona..."] + SUBTIPOS_POR_TIPO[tipo],
+        st.warning(
+            "No se encontró el archivo mapa_clusters.csv."
         )
 
-        descripcion_tipo = {
-            "LÓTICO":
-                "Ríos, arroyos y corrientes con movimiento continuo.",
+    else:
 
-            "LÉNTICO":
-                "Lagos, lagunas, presas y cuerpos de agua con flujo reducido.",
+        total_sitios = len(df_mapa)
+        total_estados = df_mapa["ESTADO"].nunique()
 
-            "COSTERO":
-                "Bahías, esteros, estuarios y zonas asociadas al entorno marino.",
-        }
+        conteo_verde = (
+            df_mapa["SEMAFORO"]
+            .astype(str)
+            .str.upper()
+            .eq("VERDE")
+            .sum()
+        )
+
+        conteo_rojo = (
+            df_mapa["SEMAFORO"]
+            .astype(str)
+            .str.upper()
+            .eq("ROJO")
+            .sum()
+        )
+
+        m1, m2, m3, m4 = st.columns(4)
+
+        with m1:
+            st.metric(
+                "Sitios analizados",
+                f"{total_sitios:,}",
+            )
+
+        with m2:
+            st.metric(
+                "Estados representados",
+                total_estados,
+            )
+
+        with m3:
+            st.metric(
+                "Sitios en verde",
+                conteo_verde,
+            )
+
+        with m4:
+            st.metric(
+                "Sitios en rojo",
+                conteo_rojo,
+            )
+
+        st.write("")
+
+        filtro1, filtro2 = st.columns(2)
+
+        with filtro1:
+
+            estados = [
+                "Todos"
+            ] + sorted(
+                df_mapa["ESTADO"]
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
+            )
+
+            estado = st.selectbox(
+                "Filtrar por estado",
+                estados,
+            )
+
+        with filtro2:
+
+            semaforos = [
+                "Todos"
+            ] + sorted(
+                df_mapa["SEMAFORO"]
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
+            )
+
+            semaforo = st.selectbox(
+                "Filtrar por semáforo",
+                semaforos,
+            )
+
+        df_filtrado = df_mapa.copy()
+
+        if estado != "Todos":
+            df_filtrado = df_filtrado[
+                df_filtrado["ESTADO"] == estado
+            ]
+
+        if semaforo != "Todos":
+            df_filtrado = df_filtrado[
+                df_filtrado["SEMAFORO"] == semaforo
+            ]
 
         st.markdown(
-            f"""
-            <div class="context-card">
-                <strong>{tipo}</strong><br>
-                {descripcion_tipo[tipo]}
-            </div>
-            """,
+            '<div class="section-heading">Mapa de sitios y clusters</div>',
             unsafe_allow_html=True,
         )
 
+        if estado == "Todos" and semaforo == "Todos" and MAPA_HTML.exists():
 
-    # ------------------------------------------------------
-    # INDICADORES
-    # ------------------------------------------------------
+            html_mapa = MAPA_HTML.read_text(
+                encoding="utf-8"
+            )
 
-    valores = {}
+            components.html(
+                html_mapa,
+                height=560,
+                scrolling=False,
+            )
 
-    seleccion_completa = (
-        tipo != "Selecciona..."
-        and subtipo is not None
-        and subtipo != "Selecciona..."
+    mapa_streamlit = df_filtrado[
+        [
+            "LATITUD",
+            "LONGITUD",
+            "SEMAFORO",
+        ]
+    ].dropna(
+        subset=["LATITUD", "LONGITUD"]
+    ).copy()
+
+    mapa_streamlit["SEMAFORO"] = (
+        mapa_streamlit["SEMAFORO"]
+        .astype(str)
+        .str.upper()
+        .str.strip()
     )
 
-    if seleccion_completa:
+    COLORES_SEMAFORO = {
+        "VERDE": "#2E8B57",
+        "AMARILLO": "#E0A800",
+        "ROJO": "#D83A3A",
+    }
+
+    mapa_streamlit["COLOR"] = (
+        mapa_streamlit["SEMAFORO"]
+        .map(COLORES_SEMAFORO)
+        .fillna("#7A8C95")
+    )
+
+    mapa_streamlit = mapa_streamlit.rename(
+        columns={
+            "LATITUD": "lat",
+            "LONGITUD": "lon",
+        }
+    )
+
+    if not mapa_streamlit.empty:
+
+        st.map(
+            mapa_streamlit,
+            latitude="lat",
+            longitude="lon",
+            color="COLOR",
+            size=25,
+            use_container_width=True,
+        )
+        st.caption(
+            f"Sitios mostrados: {len(df_filtrado):,}"
+        )
+
+        st.markdown(
+            '<div class="section-heading">Detalle de sitios</div>',
+            unsafe_allow_html=True,
+        )
+
+        columnas_tabla = [
+            "CLAVE",
+            "SITIO",
+            "ESTADO",
+            "SEMAFORO",
+            "CLUSTER",
+        ]
+
+        st.dataframe(
+            df_filtrado[columnas_tabla],
+            use_container_width=True,
+            hide_index=True,
+        )
 
         st.markdown(
             """
-            <div class="section-heading">
-                2. Indicadores de Calidad del Agua
-            </div>
-
-            <div class="helper">
-                "Ingresa los valores disponibles para realizar la evaluación"
+            <div class="interpretation-card">
+                <div class="interpretation-title">
+                    ¿Qué representa el cluster?
+                </div>
+                <div class="interpretation-text">
+                    Los clusters son grupos de sitios que presentan
+                    características ambientales similares. No equivalen
+                    automáticamente a Verde, Amarillo o Rojo; representan
+                    patrones encontrados mediante K-Means.
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        indicadores = INDICADORES_POR_TIPO[tipo]
 
-        # Mostramos hasta 3 columnas
-        columnas = st.columns(3)
+# ==========================================================
+# PÁGINA 2 — COMPRENDER
+# ==========================================================
 
-        for indice, variable in enumerate(indicadores):
+elif st.session_state["pagina"] == "COMPRENDER":
 
-            with columnas[indice % 3]:
+    st.markdown(
+        """
+        <div class="page-heading">
+            Comprender los indicadores de calidad del agua
+        </div>
+
+        <div class="page-intro">
+            Conoce qué representa cada indicador utilizado por el modelo
+            y cómo contribuye a describir la condición del agua.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="context-card">
+            El modelo final utiliza ocho variables ambientales.
+            El tipo y subtipo del cuerpo de agua aportan contexto,
+            pero no forman parte de la predicción del semáforo.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col1, col2 = st.columns(2)
+
+    for indice, variable in enumerate(INDICADORES_MODELO):
+
+        columna = col1 if indice % 2 == 0 else col2
+
+        with columna:
+
+            st.markdown(
+                f"""
+                <div class="interpretation-card">
+                    <div class="interpretation-title">
+                        {ETIQUETAS_INDICADORES[variable]}
+                    </div>
+                    <div class="interpretation-text">
+                        {DESCRIPCION_INDICADORES[variable]}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    st.write("")
+
+    st.markdown(
+        '<div class="section-heading">¿Cómo se relacionan con el modelo?</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="interpretation-card">
+            <div class="interpretation-title">
+                De los indicadores a una estimación
+            </div>
+            <div class="interpretation-text">
+                El modelo de clasificación analiza conjuntamente los
+                ocho valores ingresados y estima una categoría de
+                semáforo: Verde, Amarillo o Rojo. La predicción no debe
+                interpretarse como una determinación oficial, sino como
+                una estimación generada a partir del modelo entrenado.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="interpretation-card">
+            <div class="interpretation-title">
+                ¿Qué variables resultaron más relevantes?
+            </div>
+            <div class="interpretation-text">
+                En el modelo final, DQO, coliformes fecales y E. coli
+                aparecen entre las variables con mayor importancia
+                predictiva. La importancia del modelo no implica por sí
+                sola una relación causal.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# ==========================================================
+# PÁGINA 3 — EVALUAR
+# ==========================================================
+
+else:
+
+    st.markdown(
+        """
+        <div class="page-heading">
+            Evaluar la calidad del agua
+        </div>
+
+        <div class="page-intro">
+            Ingresa los ocho indicadores ambientales utilizados por el
+            modelo para obtener una estimación del semáforo de calidad.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="context-card">
+            <strong>¿Qué utiliza el modelo?</strong><br>
+            La predicción se realiza únicamente con los ocho indicadores
+            ambientales mostrados abajo. El tipo y subtipo del cuerpo de
+            agua no forman parte del modelo predictivo actual.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col_formulario, col_resultado = st.columns(
+        [1.15, 0.85],
+        gap="large",
+    )
+
+    # ======================================================
+    # FORMULARIO
+    # ======================================================
+
+    with col_formulario:
+
+        st.markdown(
+            '<div class="section-heading">Indicadores ambientales</div>',
+            unsafe_allow_html=True,
+        )
+
+        st.caption(
+            "Puedes escribir valores con decimales. "
+            "La estimación se genera al presionar el botón."
+        )
+
+        valores = {}
+
+        columnas = st.columns(2)
+
+        for indice, variable in enumerate(INDICADORES_MODELO):
+
+            with columnas[indice % 2]:
 
                 valores[variable] = st.number_input(
                     ETIQUETAS_INDICADORES[variable],
                     min_value=0.0,
                     value=float(VALORES_INICIALES[variable]),
-                    step=float(PASOS[variable]),
+                    step=0.001,
+                    format="%.3f",
                     key=f"input_{variable}",
                 )
-
-
-        # --------------------------------------------------
-        # EVALUAR
-        # --------------------------------------------------
 
         st.write("")
 
         evaluar = st.button(
-            "Evaluar calidad del agua",
+            "💧 Evaluar calidad del agua",
             type="primary",
             use_container_width=True,
         )
 
-    else:
-        evaluar = False
+    # ======================================================
+    # CONSULTA A LA API
+    # ======================================================
 
+    if evaluar:
 
-# ==========================================================
-# CONSULTA A API
-# ==========================================================
+        payload = {
+            # Se mantienen por compatibilidad con la API actual.
+            # No son variables predictoras del modelo.
+            "tipo": "NO_APLICA",
+            "subtipo": None,
 
-if evaluar:
+            "sst": valores["sst"],
+            "coli_fec": valores["coli_fec"],
+            "e_coli": valores["e_coli"],
+            "dqo": valores["dqo"],
+            "dbo": valores["dbo"],
+            "tox_v_15": valores["tox_v_15"],
+            "tox_d_48": valores["tox_d_48"],
+            "od_porc": valores["od_porc"],
+        }
 
-    # La API provisional todavía espera estas variables.
-    # Si alguna no aparece para el tipo seleccionado,
-    # se envía None.
+        try:
 
-    payload = {
-        "tipo": tipo,
-        "subtipo": subtipo,
+            with st.spinner(
+                "Evaluando la información..."
+            ):
 
-        "dbo": valores.get("dbo"),
-        "dqo": valores.get("dqo"),
-        "sst": valores.get("sst"),
+                respuesta = requests.post(
+                    API_URL,
+                    json=payload,
+                    timeout=10,
+                )
 
-        "coli_fec": valores.get("coli_fec"),
-        "e_coli": valores.get("e_coli"),
-        "od": valores.get("od"),
-    }
+                respuesta.raise_for_status()
 
-    try:
+            st.session_state["resultado"] = respuesta.json()
 
-        with st.spinner(
-            "Evaluando la información..."
-        ):
+        except requests.exceptions.ConnectionError:
 
-            respuesta = requests.post(
-                API_URL,
-                json=payload,
-                timeout=10,
+            st.error(
+                "No fue posible conectarse con la API. "
+                "Verifica que esté ejecutándose en el puerto 8000."
             )
 
-            respuesta.raise_for_status()
+        except requests.exceptions.RequestException as error:
 
-        st.session_state["resultado"] = respuesta.json()
-
-    except requests.exceptions.ConnectionError:
-
-        st.error(
-            "No fue posible realizar la evaluación en este momento."
-        )
-
-    except requests.exceptions.RequestException:
-
-        st.error(
-            "Se presentó un inconveniente al procesar la consulta."
-        )
-
-
-# ==========================================================
-# COLUMNA DERECHA — RESULTADO
-# ==========================================================
-
-with col_resultado:
-
-    if "resultado" not in st.session_state:
-
-        st.markdown(
-            """
-            <div class="waiting-card">
-                <strong>Resultado de la evaluación</strong>
-                <br><br>
-                El resultado aparecerá aquí después de seleccionar
-                el tipo de agua, registrar los indicadores y realizar
-                la consulta.
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    else:
-
-        resultado = st.session_state["resultado"]
-        prediccion = resultado["prediccion"]
-
-        imagen = SEMAFOROS.get(prediccion)
-
-        # ----------------------------------------------
-        # TRADUCCIÓN CIUDADANA
-        # ----------------------------------------------
-
-        if prediccion == "VERDE":
-
-            clasificacion = "BUENA"
-            clase_css = "state-good"
-
-            mensaje = (
-                "La condición evaluada presenta una calidad favorable "
-                "de acuerdo con los criterios utilizados."
+            st.error(
+                f"Se presentó un inconveniente al procesar "
+                f"la consulta: {error}"
             )
 
-        elif prediccion == "AMARILLO":
+    # ======================================================
+    # RESULTADO
+    # ======================================================
 
-            clasificacion = "CALIDAD INTERMEDIA"
-            clase_css = "state-medium"
-
-            mensaje = (
-                "La condición evaluada presenta aspectos que requieren "
-                "atención y seguimiento."
-            )
-
-        else:
-
-            clasificacion = "MALA"
-            clase_css = "state-bad"
-
-            mensaje = (
-                "La condición evaluada presenta señales de deterioro "
-                "que requieren atención."
-            )
-
+    with col_resultado:
 
         st.markdown(
             '<div class="section-heading">Resultado de la evaluación</div>',
             unsafe_allow_html=True,
         )
 
-        r1, r2 = st.columns(
-            [0.38, 0.62],
-            gap="medium",
-        )
-
-        with r1:
-
-            if imagen and imagen.exists():
-
-                st.image(
-                    imagen,
-                    use_container_width=True,
-                )
-
-        with r2:
+        if "resultado" not in st.session_state:
 
             st.markdown(
-                f"""
-                <div class="result-card">
-                    <div class="result-title">Condición estimada</div>
-                    <div class="result-state {clase_css}">{clasificacion}</div>
-                    <div class="result-copy">{mensaje}</div>
+                """
+                <div class="waiting-card">
+                    <strong>Sin evaluación</strong>
+                    <br><br>
+                    Ingresa los indicadores ambientales y presiona
+                    <strong>Evaluar calidad del agua</strong>.
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-        # ----------------------------------------------
-        # INTERPRETACIÓN
-        # ----------------------------------------------
+        else:
 
-        st.markdown(
-            """
-            <div class="interpretation-card">
-            <div class="interpretation-title">¿Qué significa este resultado?</div>
-            <div class="interpretation-text">Esta evaluación brinda una referencia sobre la condición estimada del agua
-            a partir de los indicadores ingresados
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            resultado = st.session_state["resultado"]
 
+            prediccion = str(
+                resultado["prediccion"]
+            ).upper()
 
-        # ----------------------------------------------
-        # NUEVA CONSULTA
-        # ----------------------------------------------
+            imagen = SEMAFOROS.get(prediccion)
 
-        st.write("")
+            # --------------------------------------------------
+            # INTERPRETACIÓN DEL RESULTADO
+            # --------------------------------------------------
 
-        if st.button(
-            "Realizar otra consulta",
-            use_container_width=True,
-        ):
+            if prediccion == "VERDE":
 
-            if "resultado" in st.session_state:
-                del st.session_state["resultado"]
+                clasificacion = "BUENA CALIDAD"
 
-            st.rerun()
+                mensaje = (
+                    "El patrón de indicadores ingresado fue clasificado "
+                    "por el modelo en la categoría VERDE."
+                )
 
+                orientacion = (
+                    "La estimación es favorable. Conviene mantener el "
+                    "seguimiento de los indicadores y contrastar con "
+                    "información oficial cuando corresponda."
+                )
+
+            elif prediccion == "AMARILLO":
+
+                clasificacion = "CALIDAD INTERMEDIA"
+
+                mensaje = (
+                    "El patrón de indicadores ingresado fue clasificado "
+                    "por el modelo en la categoría AMARILLO."
+                )
+
+                orientacion = (
+                    "La estimación sugiere una condición que requiere "
+                    "atención y seguimiento de los indicadores."
+                )
+
+            else:
+
+                clasificacion = "MALA CALIDAD"
+
+                mensaje = (
+                    "El patrón de indicadores ingresado fue clasificado "
+                    "por el modelo en la categoría ROJO."
+                )
+
+                orientacion = (
+                    "La estimación sugiere señales compatibles con "
+                    "deterioro de la calidad y amerita revisión técnica."
+                )
+
+            # --------------------------------------------------
+            # SEMÁFORO
+            # --------------------------------------------------
+
+            if imagen and imagen.exists():
+
+                centro1, centro2, centro3 = st.columns(
+                    [0.28, 0.44, 0.28]
+                )
+
+                with centro2:
+
+                    st.image(
+                        imagen,
+                        use_container_width=True,
+                    )
+
+            # --------------------------------------------------
+            # RESULTADO VISUAL
+            # --------------------------------------------------
+
+            st.markdown(
+                "#### Condición estimada"
+            )
+
+            if prediccion == "VERDE":
+
+                st.success(
+                    f"🟢 **{prediccion} — {clasificacion}**"
+                )
+
+            elif prediccion == "AMARILLO":
+
+                st.warning(
+                    f"🟡 **{prediccion} — {clasificacion}**"
+                )
+
+            else:
+
+                st.error(
+                    f"🔴 **{prediccion} — {clasificacion}**"
+                )
+
+            st.write(
+                mensaje
+            )
+
+            # --------------------------------------------------
+            # COMPRENSIÓN
+            # --------------------------------------------------
+
+            st.markdown(
+                "#### ¿Qué significa este resultado?"
+            )
+
+            st.write(
+                "El modelo analiza conjuntamente los ocho indicadores "
+                "ambientales registrados y estima una categoría de "
+                "semáforo: Verde, Amarillo o Rojo."
+            )
+
+            # --------------------------------------------------
+            # ORIENTACIÓN
+            # --------------------------------------------------
+
+            st.markdown(
+                "#### ¿Qué conviene revisar?"
+            )
+
+            st.write(
+                orientacion
+            )
+
+            # --------------------------------------------------
+            # INFORMACIÓN DEL MODELO
+            # --------------------------------------------------
+
+            st.caption(
+                f"Modelo: {resultado.get('modelo', 'N/D')} · "
+                f"Versión: {resultado.get('version', 'N/D')}"
+            )
+
+            st.caption(
+                "Esta predicción es una estimación generada por un "
+                "modelo de Machine Learning y no sustituye una "
+                "determinación oficial de calidad del agua."
+            )
+
+            st.write("")
+
+            # --------------------------------------------------
+            # NUEVA CONSULTA
+            # --------------------------------------------------
+
+            if st.button(
+                "↻ Realizar otra consulta",
+                use_container_width=True,
+            ):
+
+                if "resultado" in st.session_state:
+
+                    del st.session_state["resultado"]
+
+                st.rerun()
 
 # ==========================================================
 # PIE COMÚN

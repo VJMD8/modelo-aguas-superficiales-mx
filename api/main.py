@@ -1,22 +1,29 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+
 from modelo.servicio_prediccion import predecir_calidad
+
 
 app = FastAPI(
     title="API Aguas Superficiales de México",
-    version="0.1.0"
+    version="1.0.0"
 )
 
 
 class DatosAgua(BaseModel):
+    # Información contextual
     tipo: str
     subtipo: str | None = None
+
+    # Variables utilizadas por el modelo
     dbo: float | None = None
     dqo: float | None = None
     sst: float | None = None
     coli_fec: float | None = None
     e_coli: float | None = None
-    od: float | None = None
+    tox_v_15: float | None = None
+    tox_d_48: float | None = None
+    od_porc: float | None = None
 
 
 @app.get("/")
@@ -36,28 +43,6 @@ def predecir(datos: DatosAgua):
         "prediccion": resultado_modelo["prediccion"],
         "tipo": datos.tipo,
         "subtipo": datos.subtipo,
-        "modelo": resultado_modelo["modelo"]
-    }
-
-    # --------------------------------------------------
-    # MODELO PROVISIONAL / MOCK
-    # --------------------------------------------------
-    # Esta lógica es solo para probar el flujo completo.
-    # Luego Sergio sustituirá esta parte por el modelo real.
-    # --------------------------------------------------
-
-    if datos.dqo is not None and datos.dqo > 40:
-        prediccion = "ROJO"
-
-    elif datos.dqo is not None and datos.dqo > 20:
-        prediccion = "AMARILLO"
-
-    else:
-        prediccion = "VERDE"
-
-    return {
-        "prediccion": prediccion,
-        "tipo": datos.tipo,
-        "subtipo": datos.subtipo,
-        "modelo": "mock_v0.1"
+        "modelo": resultado_modelo["modelo"],
+        "version": resultado_modelo["version"]
     }

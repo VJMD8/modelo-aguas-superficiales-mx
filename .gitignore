@@ -22,3 +22,5 @@ Thumbs.db
 
 # Variables de entorno
 .env
+
+!modelo/modelo_calidad_agua.pkl

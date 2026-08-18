@@ -1,30 +1,50 @@
+from pathlib import Path
+
+import joblib
+import pandas as pd
+
+
 # --------------------------------------------------
 # SERVICIO DE PREDICCIÓN
 # --------------------------------------------------
-# Hoy utiliza una lógica provisional (mock).
-# Posteriormente Sergio sustituirá esta función
-# por la carga y ejecución del modelo real.
+# Carga y ejecuta el modelo final de calidad del agua.
 # --------------------------------------------------
+
+
+RUTA_MODELO = Path(__file__).resolve().parent / "modelo_calidad_agua.pkl"
+
+artefacto = joblib.load(RUTA_MODELO)
+
+pipeline = artefacto["pipeline"]
+label_encoder = artefacto["label_encoder"]
+variables_modelo = artefacto["variables"]
 
 
 def predecir_calidad(datos):
 
-    dqo = datos.dqo
+    entrada = pd.DataFrame(
+        [
+            {
+                "SST_mg/L": datos.sst,
+                "COLI_FEC_NMP_100mL": datos.coli_fec,
+                "E_COLI_NMP_100mL": datos.e_coli,
+                "DQO_mg/L": datos.dqo,
+                "DBO_mg/L": datos.dbo,
+                "TOX_V_15_UT": datos.tox_v_15,
+                "TOX_D_48_UT": datos.tox_d_48,
+                "OD_PORC": datos.od_porc,
+            }
+        ]
+    )
 
-    # --------------------------------------------------
-    # MODELO PROVISIONAL
-    # --------------------------------------------------
+    entrada = entrada[variables_modelo]
 
-    if dqo is not None and dqo > 40:
-        prediccion = "ROJO"
+    pred_codificada = pipeline.predict(entrada)
 
-    elif dqo is not None and dqo > 20:
-        prediccion = "AMARILLO"
-
-    else:
-        prediccion = "VERDE"
+    prediccion = label_encoder.inverse_transform(pred_codificada)[0]
 
     return {
-        "prediccion": prediccion,
-        "modelo": "mock_v0.1"
+        "prediccion": prediccion.upper(),
+        "modelo": artefacto["modelo"],
+        "version": artefacto["version"],
     }
